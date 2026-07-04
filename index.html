@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sandronelog — Verilog block visualizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles/styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><span class="mark">sandrone<b>log</b></span><span class="sub">verilog blocks</span></div>
+    <div class="spacer"></div>
+    <div class="zoomctl"><button id="zoomOut" title="Zoom out">−</button><span class="z" id="zoomLbl">100%</span><button id="zoomIn" title="Zoom in">+</button></div>
+    <button class="btn ghost" id="fitBtn" title="Reset view">Fit</button>
+    <button class="iconbtn" id="themeBtn" title="Toggle theme"></button>
+    <button class="btn ghost" id="loadBtn" title="Load a saved .json design">Load</button>
+    <button class="btn ghost" id="saveBtn" title="Save design as .json">Save</button>
+    <button class="btn primary" id="svBtn">SystemVerilog</button>
+    <input type="file" id="fileIn" accept=".json,application/json" hidden>
+  </header>
+  <div class="main">
+    <aside class="palette" id="palette" aria-label="Block palette"></aside>
+    <div class="canvas" id="canvas">
+      <div class="world" id="world"><svg class="wires" id="wires"></svg></div>
+      <div class="drop-hint">Release to place a block here</div>
+      <div class="tpanel" id="tpanel">
+        <div class="tphead" id="tphead"><span class="ti">Top-level ports</span><span class="tc" id="tpCount">0</span><span class="chev">▾</span></div>
+        <div class="tpbody" id="tpbody"></div>
+        <div class="tpadd"><button data-addtp="input">+ input</button><button data-addtp="output">+ output</button></div>
+      </div>
+    </div>
+    <aside class="dock" id="dock">
+      <div class="dockhead"><span class="title">Generated</span><input class="fname" id="fname" value="top.sv" spellcheck="false"><div class="spacer"></div><button class="mini" id="closeDock" title="Hide panel">Hide</button></div>
+      <div class="svwrap"><pre class="sv" id="svOut"></pre></div>
+      <div class="statline" id="statline"></div>
+      <div class="dockfoot"><button class="btn" id="copyBtn" style="flex:1">Copy</button><button class="btn primary" id="dlBtn" style="flex:1">Download .sv</button></div>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
