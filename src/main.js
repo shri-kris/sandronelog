@@ -1,12 +1,9 @@
-// Entry point: wires the top bar, mounts the palette, and seeds a demo design.
-// Importing these modules also registers their global listeners (canvas
-// interactions, wire routing context menu, theme toggle).
+// Entry point: boots the design, wires the top bar, and seeds a demo hierarchy.
 
 import { $, download, toast } from "./dom.js";
-import { state } from "./state.js";
-import { addBlock, makeTPort, tagPort, addWire, addTPort, clearSelect } from "./model.js";
-import { renderTPorts } from "./render.js";
-import { refreshSV } from "./codegen.js";
+import { state, VERSION } from "./state.js";
+import { addBlock, addWire, makeTPort, tagPort, addTPort } from "./model.js";
+import { createTop, createModule, addInstance, activateSheet, renderSheet } from "./sheets.js";
 import { zoomBy, applyView } from "./interactions.js";
 import { applyThemeIcon } from "./theme.js";
 import { mountPalette } from "./palette.js";
@@ -14,9 +11,10 @@ import { serialize, loadDesign } from "./persistence.js";
 import "./routing.js";
 
 /* ---- boot ---- */
+createTop();
 mountPalette();
 applyThemeIcon();
-applyView();
+$("#ver").textContent = "v" + VERSION;
 
 /* ---- top-bar / dock chrome ---- */
 $("#zoomIn").onclick = () => zoomBy(1.15);
@@ -37,17 +35,24 @@ $("#fileIn").onchange = (e) => {
   r.readAsText(f); e.target.value = "";
 };
 
-/* ---- seed demo ---- */
-const counter = addBlock({ quiet: true, type: "module", name: "counter", x: 110, y: 150,
-  body: "always_ff @(posedge clk)\n    if (rst) count <= '0;\n    else     count <= count + 1'b1;",
-  ports: [{ name: "clk", dir: "input" }, { name: "rst", dir: "input" }, { name: "count", dir: "output", width: 8 }] });
-const led = addBlock({ quiet: true, type: "module", name: "led_driver", x: 510, y: 170,
-  body: "assign led = value;",
-  ports: [{ name: "clk", dir: "input" }, { name: "value", dir: "input", width: 8 }, { name: "led", dir: "output", width: 8 }] });
-const tClk = makeTPort("clk", "input", 1), tRst = makeTPort("rst", "input", 1), tLed = makeTPort("led_out", "output", 8);
-tagPort(counter.ports[0].id, tClk.id);
-tagPort(counter.ports[1].id, tRst.id);
-tagPort(led.ports[0].id, tClk.id);
-tagPort(led.ports[2].id, tLed.id);
-addWire(counter.ports[2].id, led.ports[1].id);   // count -> value (8-bit → width label)
-renderTPorts(); clearSelect(); refreshSV();
+/* ---- seed demo: a half_adder built from gates, instantiated on top ---- */
+const ha = createModule({ name: "half_adder", tports: [
+  { name: "a", dir: "input" }, { name: "b", dir: "input" },
+  { name: "sum", dir: "output" }, { name: "carry", dir: "output" }] });
+activateSheet(ha.id);
+{
+  const [ta, tb, tsum, tcarry] = ha.tports;
+  const xor = addBlock({ quiet: true, type: "xor", x: 360, y: 150 });
+  const and = addBlock({ quiet: true, type: "and", x: 360, y: 300 });
+  tagPort(xor.ports[0].id, ta.id); tagPort(xor.ports[1].id, tb.id); tagPort(xor.ports[2].id, tsum.id);
+  tagPort(and.ports[0].id, ta.id); tagPort(and.ports[1].id, tb.id); tagPort(and.ports[2].id, tcarry.id);
+}
+activateSheet("top");
+{
+  const A = makeTPort("A", "input", 1), B = makeTPort("B", "input", 1);
+  const S = makeTPort("SUM", "output", 1), C = makeTPort("CARRY", "output", 1);
+  const inst = addInstance(ha.id, { quiet: true, x: 380, y: 190 });
+  tagPort(inst.ports[0].id, A.id); tagPort(inst.ports[1].id, B.id);
+  tagPort(inst.ports[2].id, S.id); tagPort(inst.ports[3].id, C.id);
+}
+renderSheet("top");

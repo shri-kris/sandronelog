@@ -1,15 +1,17 @@
-// Central mutable state shared across modules.
+// Central mutable state. A design is a set of module definitions; the canvas
+// shows one active module ("sheet") at a time.
+
+export const VERSION = "0.1";
 
 export const state = {
-  blocks: [],
-  wires: [],          // {id, from, to, tag?}  tag wires: from=block port, to=tport id
-  tports: [],         // {id, name, dir:'input'|'output', width}
-  view: { x: 60, y: 60, scale: 1 },
-  selected: null,     // {type:'block'|'wire', id}
+  modules: {},        // id -> { id, name, isTop, blocks[], wires[], tports[], view }
+  order: [],          // non-top module ids in creation order (palette + codegen)
+  openTabs: [],       // module ids open as tabs (top always first)
+  activeId: null,     // module currently shown on the canvas
+  selected: null,     // {type:'block'|'wire', id} on the active sheet
 };
 
-// Transient UI session flags (not persisted). Kept here so render/routing/
-// interactions modules can share them without import cycles on live values.
+// Transient UI session flags (not persisted).
 export const session = {
   route: null,        // active wire routing: { from, sticky }
   drag: null,         // active block/pan drag
@@ -19,5 +21,18 @@ export const session = {
 let _id = 1;
 export const uid = (p) => `${p}${_id++}`;
 
-// Maps a port id -> its rendered .dot element (for wire geometry).
+// port id -> rendered .dot element, for the ACTIVE sheet only.
 export const portDots = new Map();
+
+// Active-sheet proxies: reading/writing state.blocks/wires/tports/view targets
+// the active module. This lets model/render/wires/routing/interactions keep
+// operating on `state.blocks` etc. unchanged. codegen/persistence use
+// state.modules directly and ignore these.
+const activeSheet = () => state.modules[state.activeId];
+for (const key of ["blocks", "wires", "tports", "view"]) {
+  Object.defineProperty(state, key, {
+    get() { return activeSheet()[key]; },
+    set(v) { activeSheet()[key] = v; },
+    enumerable: true,
+  });
+}

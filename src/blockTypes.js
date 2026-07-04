@@ -51,12 +51,6 @@ const gate2 = (id, label, glyph, expr) => reg({
 });
 
 /* Sources */
-reg({
-  id: "module", label: "Module", category: "Sources", kind: "module",
-  editableName: true, editablePorts: true, editableBody: true,
-  ports: [{ name: "clk", dir: "input", width: 1 }, { name: "y", dir: "output", width: 1 }],
-  glyph: g(`<rect x="4" y="4" width="16" height="12" rx="1.5"/><path d="M4 8 H1M4 12 H1M20 8 H23M20 12 H23"/>`),
-});
 const constBlock = (id, label, val) => reg({
   id, label, category: "Sources", kind: "primitive",
   ports: [{ name: "y", dir: "output", width: 1 }], glyph: constGlyph(val === "1'b1" ? "1" : "0"),
@@ -103,4 +97,8 @@ reg({
   },
 });
 
-export const typeOf = (b) => blockTypes[b.type] || blockTypes.module;
+// Registry lookup for primitive blocks (instances are handled by kind, not type).
+export const typeOf = (b) => blockTypes[b.type];
+
+// Glyph for the "New module" palette item and instance block headers.
+export const MODULE_GLYPH = g(`<rect x="4" y="4" width="16" height="12" rx="1.5"/><path d="M4 8 H1M4 12 H1M20 8 H23M20 12 H23"/>`);
