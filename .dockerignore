@@ -1,0 +1,13 @@
+backend/
+.git/
+.gemini/
+.agents/
+node_modules/
+docker-compose.yml
+Dockerfile
+.dockerignore
+.gitignore
+README.md
+task.md
+walkthrough.md
+implementation_plan.md
