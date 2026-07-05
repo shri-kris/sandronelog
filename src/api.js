@@ -1,6 +1,6 @@
 // API helper to communicate with the compiler backend.
 
-const DEFAULT_API_URL = "http://localhost:5000";
+const DEFAULT_API_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
 
 export async function compileDesign(files, runSimulation = true) {
   // Allow overriding backend URL via localStorage for convenience
