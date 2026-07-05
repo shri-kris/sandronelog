@@ -83,7 +83,8 @@ async function compileAndSimulate(files, runSimulation = true) {
       const insideCmd = `iverilog -g2012 -o /app/design.vvp ${svFiles.map(f => `/app/src/${f}`).join(" ")} ${runSimulation ? "&& vvp /app/design.vvp" : ""}`;
       
       // Run docker with a non-root user, memory limit (64MB), and network disabled
-      compileCmd = `docker run --rm --net=none -m 64m -v "${absoluteRunDir}":/app/src:rw sandronelog-sandbox sh -c "${insideCmd}"`;
+      // Set the working directory to the mounted src directory so waveforms (.vcd) are written there.
+      compileCmd = `docker run --rm --net=none -m 64m -w /app/src -v "${absoluteRunDir}":/app/src:rw sandronelog-sandbox sh -c "${insideCmd}"`;
     } else {
       // Local execution fallback
       const localOut = path.join(runDir, "design.vvp");
@@ -96,7 +97,7 @@ async function compileAndSimulate(files, runSimulation = true) {
 
     // 2. Execute command
     const result = await new Promise((resolve) => {
-      exec(compileCmd, { timeout: TIMEOUT_MS }, (error, stdout, stderr) => {
+      exec(compileCmd, { timeout: TIMEOUT_MS, cwd: runDir }, (error, stdout, stderr) => {
         resolve({ error, stdout, stderr });
       });
     });
