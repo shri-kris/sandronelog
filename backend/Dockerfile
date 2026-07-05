@@ -14,6 +14,9 @@ RUN npm install --only=production
 # Copy backend source code
 COPY . .
 
+# Change ownership of the app folder to the node user so it can write temp files
+RUN chown -R node:node /app
+
 # Run as non-privileged node user for security
 USER node
 
