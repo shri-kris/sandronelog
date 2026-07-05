@@ -4,12 +4,16 @@ import { $, download, toast } from "./dom.js";
 import { state, VERSION } from "./state.js";
 import { addBlock, addWire, makeTPort, tagPort, addTPort } from "./model.js";
 import { createTop, createModule, addInstance, activateSheet, renderSheet } from "./sheets.js";
-import { refreshSV, setDockMode, currentDockText, autoGrow } from "./codegen.js";
+import { refreshSV, setDockMode, currentDockText, autoGrow, generateSV } from "./codegen.js";
 import { zoomBy, applyView } from "./interactions.js";
 import { applyThemeIcon } from "./theme.js";
 import { mountPalette } from "./palette.js";
 import { serialize, loadDesign } from "./persistence.js";
 import "./routing.js";
+import { compileDesign } from "./api.js";
+import { parseVCD, drawWaveforms } from "./waves.js";
+
+let currentVcdData = null;
 
 /* ---- boot ---- */
 createTop();
@@ -32,7 +36,115 @@ $("#hdlEdit").addEventListener("input", (e) => {
 });
 document.querySelectorAll("[data-addtp]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); addTPort(b.dataset.addtp); }));
 $("#copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(currentDockText()); toast("Copied to clipboard"); } catch { toast("Copy failed — select manually"); } };
-$("#dlBtn").onclick = () => { download($("#svOut").dataset.raw || "", $("#fname").value || "top.sv"); toast("Downloaded " + ($("#fname").value || "top.sv")); };
+$("#dlBtn").onclick = () => { download(generateSV(), $("#fname").value || "top.sv"); toast("Downloaded " + ($("#fname").value || "top.sv")); };
+
+/* ---- compiler simulation execution ---- */
+function switchOutputTab(tabName) {
+  document.querySelectorAll("#opTabs .op-tab-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll(".op-tab-content").forEach((content) => {
+    content.classList.toggle("active", content.id === (tabName === "logs" ? "opLogs" : "opWaves"));
+  });
+  if (tabName === "waves" && currentVcdData) {
+    drawWaveforms($("#waveCanvas"), currentVcdData);
+  }
+}
+
+document.querySelectorAll("#opTabs .op-tab-btn").forEach((btn) => {
+  btn.onclick = () => switchOutputTab(btn.dataset.tab);
+});
+
+$("#opHead").onclick = () => {
+  const panel = $("#outputPanel");
+  const isCollapsed = panel.classList.toggle("collapsed");
+  $("#closeOutput").textContent = isCollapsed ? "▲" : "▾";
+  if (!isCollapsed && currentVcdData) {
+    const activeTab = document.querySelector("#opTabs .op-tab-btn.active")?.dataset.tab;
+    if (activeTab === "waves") {
+      drawWaveforms($("#waveCanvas"), currentVcdData);
+    }
+  }
+};
+
+$("#closeOutput").onclick = (e) => {
+  e.stopPropagation();
+  $("#opHead").click();
+};
+
+window.addEventListener("themechange", () => {
+  if (currentVcdData) {
+    drawWaveforms($("#waveCanvas"), currentVcdData);
+  }
+});
+
+$("#runBtn").onclick = async () => {
+  const btn = $("#runBtn");
+  btn.disabled = true;
+  btn.textContent = "Running...";
+  
+  const consoleOut = $("#consoleOut");
+  consoleOut.textContent = "Connecting to compiler server...\n";
+
+  const outputPanel = $("#outputPanel");
+  outputPanel.classList.remove("collapsed");
+  $("#closeOutput").textContent = "▾";
+  switchOutputTab("logs");
+
+  try {
+    const svCode = generateSV();
+    if (!svCode.trim()) {
+      throw new Error("No SystemVerilog code generated to compile.");
+    }
+
+    const filesPayload = {
+      "design.sv": svCode
+    };
+
+    const response = await compileDesign(filesPayload, true);
+    
+    consoleOut.textContent = "";
+    if (response.stdout) {
+      consoleOut.textContent += `[Simulation Console Output]\n${response.stdout}\n`;
+    }
+    if (response.stderr) {
+      consoleOut.textContent += `[Compiler Output / Errors]\n${response.stderr}\n`;
+    }
+    if (!response.stdout && !response.stderr) {
+      consoleOut.textContent += "Compilation successful. No console output generated.\n";
+    }
+
+    const waveCanvas = $("#waveCanvas");
+    const waveEmpty = $("#waveEmpty");
+    
+    if (response.vcd) {
+      currentVcdData = parseVCD(response.vcd);
+      if (currentVcdData && currentVcdData.signals.length > 0) {
+        waveEmpty.style.display = "none";
+        waveCanvas.style.display = "block";
+        drawWaveforms(waveCanvas, currentVcdData);
+        switchOutputTab("waves");
+        toast("Simulation successful");
+      } else {
+        waveCanvas.style.display = "none";
+        waveEmpty.style.display = "flex";
+        waveEmpty.textContent = "VCD file parsed, but no signal traces were found. Make sure you use $dumpvars.";
+      }
+    } else {
+      currentVcdData = null;
+      waveCanvas.style.display = "none";
+      waveEmpty.style.display = "flex";
+      waveEmpty.textContent = "No waveforms were generated. Add a testbench block with $dumpfile(\"waves.vcd\") and $dumpvars to view waves.";
+    }
+  } catch (error) {
+    consoleOut.textContent += `\nError: ${error.message}`;
+    toast("Compile failed");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Compile & Run";
+  }
+};
+
 $("#saveBtn").onclick = () => { download(serialize(), "sandronelog-design.json", "application/json"); toast("Design saved"); };
 $("#loadBtn").onclick = () => $("#fileIn").click();
 $("#fileIn").onchange = (e) => {

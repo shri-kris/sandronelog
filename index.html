@@ -35,6 +35,29 @@
           <div class="tpadd"><button data-addtp="input">+ input</button><button data-addtp="output">+ output</button></div>
         </div>
       </div>
+      <!-- Console and Waveform bottom panel -->
+      <div class="output-panel collapsed" id="outputPanel">
+        <div class="op-head" id="opHead">
+          <span class="op-title">Simulation Output & Waves</span>
+          <div class="spacer"></div>
+          <button class="op-close" id="closeOutput" title="Toggle panel">▴</button>
+        </div>
+        <div class="op-tabs" id="opTabs">
+          <button class="op-tab-btn active" data-tab="logs">Console Logs</button>
+          <button class="op-tab-btn" data-tab="waves">Waveforms</button>
+        </div>
+        <div class="op-body">
+          <div class="op-tab-content active" id="opLogs">
+            <pre class="op-console" id="consoleOut">Click "Compile & Run" in the SystemVerilog panel to execute...</pre>
+          </div>
+          <div class="op-tab-content" id="opWaves">
+            <div class="wave-viewer-container" id="waveContainer">
+              <canvas id="waveCanvas" width="800" height="200"></canvas>
+              <div class="wave-empty" id="waveEmpty">No simulation waves generated yet. Write initial stimulations in your top.sv block to create VCD files.</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <aside class="dock" id="dock">
       <div class="dockhead">
@@ -52,7 +75,7 @@
         <pre class="sv full" id="svOut"></pre>
       </div>
       <div class="statline" id="statline"></div>
-      <div class="dockfoot"><input class="fname" id="fname" value="top.sv" spellcheck="false"><button class="btn" id="copyBtn" style="flex:1">Copy</button><button class="btn primary" id="dlBtn" style="flex:1">Download .sv</button></div>
+      <div class="dockfoot"><input class="fname" id="fname" value="top.sv" spellcheck="false"><button class="btn" id="copyBtn">Copy</button><button class="btn primary" id="runBtn" title="Compile and Run simulation on backend">Compile & Run</button><button class="btn" id="dlBtn">Download</button></div>
     </aside>
   </div>
 </div>

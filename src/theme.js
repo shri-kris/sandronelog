@@ -15,4 +15,5 @@ export function applyThemeIcon() {
 $("#themeBtn").onclick = () => {
   document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   applyThemeIcon(); updateWires();
+  window.dispatchEvent(new CustomEvent("themechange"));
 };
