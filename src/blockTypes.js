@@ -72,14 +72,17 @@ reg({
 });
 
 /* Sequential */
+// `proc` primitives contribute to a procedural block. codegen groups all procs
+// with the same { kind, sens } into one always_ff/always_comb block.
 reg({
   id: "dff", label: "D flip-flop", category: "Sequential", kind: "primitive",
   ports: [{ name: "clk", dir: "input", width: 1 }, { name: "d", dir: "input", width: 1 }, { name: "q", dir: "output", width: 1 }],
   glyph: g(`<rect x="5" y="3" width="14" height="14" rx="1.5"/><path d="M5 12 l3 -2 l-3 -2"/>`),
-  emit: ({ block, netName }) => {
-    const clk = netName(block.ports[0].id), d = netName(block.ports[1].id), q = netName(block.ports[2].id);
-    return `    always_ff @(posedge ${clk})\n        ${q} <= ${d};`;
-  },
+  proc: ({ block, netName }) => ({
+    kind: "always_ff",
+    sens: `posedge ${netName(block.ports[0].id)}`,
+    stmt: `${netName(block.ports[2].id)} <= ${netName(block.ports[1].id)};`,
+  }),
 });
 
 /* Other */

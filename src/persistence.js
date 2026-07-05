@@ -10,7 +10,7 @@ export function serialize() {
     version: 4, appVersion: VERSION,
     activeId: state.activeId, openTabs: state.openTabs, order: state.order,
     modules: Object.values(state.modules).map((m) => ({
-      id: m.id, name: m.name, isTop: !!m.isTop, view: m.view,
+      id: m.id, name: m.name, isTop: !!m.isTop, body: m.body || "", view: m.view,
       tports: m.tports.map((t) => ({ id: t.id, name: t.name, dir: t.dir, width: t.width })),
       blocks: m.blocks.map((b) => b.kind === "instance"
         ? { kind: "instance", ref: b.ref, x: b.x, y: b.y, ports: b.ports.map((p) => ({ id: p.id, tref: p.tref, name: p.name, dir: p.dir, width: p.width })) }
@@ -22,7 +22,7 @@ export function serialize() {
 
 function migrateV3(data) {
   const top = {
-    id: "top", name: "top", isTop: true, view: data.view || { x: 60, y: 60, scale: 1 },
+    id: "top", name: "top", isTop: true, body: "", view: data.view || { x: 60, y: 60, scale: 1 },
     tports: (data.tports || []).map((t) => ({ id: t.id, name: t.name, dir: t.dir, width: t.width ?? 1 })),
     blocks: [], wires: (data.wires || []).map((w) => ({ from: w.from, to: w.to, tag: !!w.tag })),
   };
@@ -30,7 +30,7 @@ function migrateV3(data) {
   (data.blocks || []).forEach((b) => {
     if (b.type === "module") {
       const defId = uid("m"), tref = {};
-      const def = { id: defId, name: b.name || "module", isTop: false, view: { x: 60, y: 60, scale: 1 }, tports: [], blocks: [], wires: [] };
+      const def = { id: defId, name: b.name || "module", isTop: false, body: b.body || "", view: { x: 60, y: 60, scale: 1 }, tports: [], blocks: [], wires: [] };
       (b.ports || []).forEach((p) => { const tid = uid("t"); tref[p.id] = tid; def.tports.push({ id: tid, name: p.name, dir: p.dir, width: p.width ?? 1 }); });
       modules.push(def);
       top.blocks.push({ kind: "instance", ref: defId, x: b.x, y: b.y, ports: (b.ports || []).map((p) => ({ id: p.id, tref: tref[p.id], name: p.name, dir: p.dir, width: p.width ?? 1 })) });
@@ -52,7 +52,7 @@ export function loadDesign(raw) {
 
   (data.modules || []).forEach((m) => mid(m.id));   // pre-map so refs resolve
   (data.modules || []).forEach((m) => {
-    const nm = { id: mid(m.id), name: m.name, isTop: !!m.isTop, view: m.view || { x: 60, y: 60, scale: 1 }, tports: [], blocks: [], wires: [] };
+    const nm = { id: mid(m.id), name: m.name, isTop: !!m.isTop, body: m.body || "", view: m.view || { x: 60, y: 60, scale: 1 }, tports: [], blocks: [], wires: [] };
     (m.tports || []).forEach((t) => nm.tports.push({ id: rid(t.id), name: t.name, dir: t.dir, width: t.width ?? 1 }));
     (m.blocks || []).forEach((b) => {
       if (b.kind === "instance") {

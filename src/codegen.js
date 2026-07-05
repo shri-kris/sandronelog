@@ -53,10 +53,15 @@ function buildNets(mod) {
   return { netOf, nets, used };
 }
 
-function emitModule(mod, svNameOf, L) {
+// Build a module's generated source, split into the locked `head` (everything
+// derived from the block diagram) and `tail` ("endmodule"). The editable inline
+// HDL (mod.body) is deliberately excluded, so the dock can slot an editable box
+// between head and tail.
+function moduleSegments(mod, svNameOf) {
   const { netOf, nets, used } = buildNets(mod);
   const prims = mod.blocks.filter((b) => b.kind !== "instance");
   const insts = mod.blocks.filter((b) => b.kind === "instance");
+  const H = [];
 
   // dangling pins (unconnected) become declared internal wires
   const extraWires = [];
@@ -74,20 +79,40 @@ function emitModule(mod, svNameOf, L) {
 
   const svName = svNameOf[mod.id];
   if (portNets.length) {
-    L.push(`module ${svName} (`);
+    H.push(`module ${svName} (`);
     portNets.forEach((n, i) => {
       const dir = (n.dir === "output" ? "output" : "input").padEnd(6), rng = widthRange(n.width), rp = rng ? rng + " " : "";
-      L.push(`    ${dir} logic ${rp}${n.name}${i < portNets.length - 1 ? "," : ""}`);
+      H.push(`    ${dir} logic ${rp}${n.name}${i < portNets.length - 1 ? "," : ""}`);
     });
-    L.push(`);`);
-  } else { L.push(`module ${svName};`); }
+    H.push(`);`);
+  } else { H.push(`module ${svName};`); }
 
-  if (internalNets.length) { L.push(""); internalNets.forEach((n) => L.push(`    wire ${widthRange(n.width) ? widthRange(n.width) + " " : ""}${n.name};`)); }
-  L.push("");
+  if (internalNets.length) { H.push(""); internalNets.forEach((n) => H.push(`    wire ${widthRange(n.width) ? widthRange(n.width) + " " : ""}${n.name};`)); }
+  H.push("");
 
-  // primitive logic
-  prims.forEach((b) => { const t = typeOf(b); if (t?.emit) t.emit({ block: b, netName }).split("\n").forEach((l) => L.push(l)); });
-  if (prims.length) L.push("");
+  // primitive logic: continuous assigns, plus procedural blocks consolidated by
+  // { kind, sensitivity } so N flip-flops on the same clock share one always_ff.
+  const assigns = [];
+  const procGroups = new Map();   // "kind@@sens" -> { kind, sens, stmts:[] }
+  prims.forEach((b) => {
+    const t = typeOf(b); if (!t) return;
+    if (t.proc) {
+      const { kind, sens, stmt } = t.proc({ block: b, netName });
+      const key = `${kind}@@${sens || ""}`;
+      if (!procGroups.has(key)) procGroups.set(key, { kind, sens: sens || "", stmts: [] });
+      procGroups.get(key).stmts.push(stmt);
+    } else if (t.emit) {
+      t.emit({ block: b, netName }).split("\n").forEach((l) => assigns.push(l));
+    }
+  });
+  assigns.forEach((l) => H.push(l));
+  if (assigns.length) H.push("");
+  for (const { kind, sens, stmts } of procGroups.values()) {
+    const header = sens ? `${kind} @(${sens})` : kind;
+    if (stmts.length === 1) { H.push(`    ${header}`, `        ${stmts[0]}`); }
+    else { H.push(`    ${header} begin`); stmts.forEach((s) => H.push(`        ${s}`)); H.push(`    end`); }
+    H.push("");
+  }
 
   // sub-module instantiations
   const instUsed = new Set();
@@ -96,27 +121,44 @@ function emitModule(mod, svNameOf, L) {
     const dsv = svNameOf[b.ref];
     let inst = `u_${dsv || "m"}`, k = 1;
     while (instUsed.has(inst)) inst = `u_${dsv || "m"}_${k++}`; instUsed.add(inst);
-    L.push(`    ${dsv} ${inst} (`);
+    H.push(`    ${dsv} ${inst} (`);
     b.ports.forEach((p, i, arr) => {
       const t = def.tports.find((x) => x.id === p.tref);
-      L.push(`        .${sanitize(t?.name || p.name)} (${netName(p.id)})${i < arr.length - 1 ? "," : ""}`);
+      H.push(`        .${sanitize(t?.name || p.name)} (${netName(p.id)})${i < arr.length - 1 ? "," : ""}`);
     });
-    L.push(`    );`, "");
+    H.push(`    );`, "");
   });
-  L.push(`endmodule`, "");
+
+  return { head: H.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, ""), tail: "endmodule" };
 }
 
-export function generateSV() {
+// inline HDL (mod.body) formatted for insertion into the module body.
+function inlineHDL(mod) {
+  if (!mod.body || !mod.body.trim()) return "";
+  return "\n    // inline HDL\n" +
+    mod.body.replace(/\r/g, "").split("\n").map((l) => (l ? "    " + l : "")).join("\n");
+}
+
+// Full-design emit: head + inline HDL + tail, preserving prior output.
+function emitModule(mod, svNameOf, L) {
+  const { head, tail } = moduleSegments(mod, svNameOf);
+  L.push(head + inlineHDL(mod), "", tail, "");
+}
+
+// Unique SystemVerilog name per module id (top reserves "top" first).
+function computeSvNames() {
   const top = state.modules.top;
   const nonTop = state.order.map((id) => state.modules[id]).filter(Boolean);
-
-  // unique SystemVerilog name per module id (top reserves "top" first)
   const svNameOf = {}, usedNames = new Set();
   for (const m of [top, ...nonTop]) {
     let base = sanitize(m.name) || (m.isTop ? "top" : "module"), name = base, k = 1;
     while (usedNames.has(name)) name = `${base}_${k++}`; usedNames.add(name); svNameOf[m.id] = name;
   }
+  return { svNameOf, top, nonTop };
+}
 
+export function generateSV() {
+  const { svNameOf, top, nonTop } = computeSvNames();
   const L = [];
   L.push(`// Generated by sandronelog v${VERSION} — ${nonTop.length + 1} module(s)`, "");
   nonTop.forEach((m) => emitModule(m, svNameOf, L));   // definitions first
@@ -125,23 +167,66 @@ export function generateSV() {
   return L.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }
 
+// One module's source, split for the dock editor: locked head / editable body / locked tail.
+export function moduleCode(id) {
+  const { svNameOf } = computeSvNames();
+  const mod = state.modules[id];
+  const { head, tail } = moduleSegments(mod, svNameOf);
+  return { head, tail, body: mod.body || "" };
+}
+
 function highlight(code) {
   return esc(code)
     .replace(/(^|\n)(\/\/.*)/g, (m, a, b) => a + `<span class="cm">${b}</span>`)
-    .replace(/\b(module|endmodule|logic|wire|assign|always_ff|always_comb|posedge|negedge|if|else)\b/g, '<span class="kw">$1</span>')
+    .replace(/\b(module|endmodule|logic|wire|assign|always_ff|always_comb|always_latch|posedge|negedge|begin|end|if|else)\b/g, '<span class="kw">$1</span>')
     .replace(/\b(input)\b/g, '<span class="dir">$1</span>')
     .replace(/\b(output)\b/g, '<span class="out">$1</span>')
     .replace(/(\[\d+:\d+\])/g, '<span class="rng">$1</span>');
 }
 
+/* ---------------- dock (per-module editor vs full design) ---------------- */
+let dockMode = "module";   // "module" | "full"
+export function setDockMode(m) { dockMode = m; renderDock(); }
+export function autoGrow(ta) { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
+
+// Update the locked generated segments + full raw + stats. Never writes the
+// editable textarea, so typing is never interrupted or the caret lost.
 export function refreshSV() {
-  const code = generateSV();
-  $("#svOut").innerHTML = highlight(code); $("#svOut").dataset.raw = code;
+  const full = generateSV();
+  $("#svOut").dataset.raw = full;
   const mod = state.modules[state.activeId];
+  $("#dockTitle").textContent = `${mod.name}.sv`;
+  document.querySelectorAll("#dockMode [data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === dockMode));
+  if (dockMode === "full") {
+    $("#svOut").innerHTML = highlight(full);
+  } else {
+    const { head, tail } = moduleCode(state.activeId);
+    $("#genHead").innerHTML = highlight(head) + `\n<span class="cm">    // ── your HDL (editable) ──</span>`;
+    $("#genTail").innerHTML = highlight(tail);
+  }
   const insts = mod.blocks.filter((b) => b.kind === "instance").length;
   $("#statline").innerHTML =
     `<span><b>${Object.keys(state.modules).length}</b> modules</span>` +
     `<span><b>${mod.blocks.length}</b> blocks here</span>` +
     `<span><b>${insts}</b> instances</span>` +
     `<span><b>${mod.tports.length}</b> ports</span>`;
+}
+
+// Called on tab switch / mode toggle: choose editor vs full pre, load the textarea.
+export function renderDock() {
+  const moduleMode = dockMode === "module";
+  $("#editor").style.display = moduleMode ? "" : "none";
+  $("#svOut").style.display = moduleMode ? "none" : "";
+  if (moduleMode) { const ta = $("#hdlEdit"); ta.value = state.modules[state.activeId].body || ""; autoGrow(ta); }
+  refreshSV();
+}
+
+// Text the Copy button yields: the shown module (module mode) or the whole design.
+export function currentDockText() {
+  if (dockMode === "full") return $("#svOut").dataset.raw || "";
+  const { head, tail, body } = moduleCode(state.activeId);
+  const b = body.trim()
+    ? "\n    // inline HDL\n" + body.replace(/\r/g, "").split("\n").map((l) => (l ? "    " + l : "")).join("\n")
+    : "";
+  return `${head}${b}\n${tail}\n`;
 }

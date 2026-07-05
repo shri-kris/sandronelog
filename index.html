@@ -37,10 +37,22 @@
       </div>
     </div>
     <aside class="dock" id="dock">
-      <div class="dockhead"><span class="title">Generated</span><input class="fname" id="fname" value="top.sv" spellcheck="false"><div class="spacer"></div><button class="mini" id="closeDock" title="Hide panel">Hide</button></div>
-      <div class="svwrap"><pre class="sv" id="svOut"></pre></div>
+      <div class="dockhead">
+        <div class="dockmode" id="dockMode"><button data-mode="module" class="on">Module</button><button data-mode="full">Full .sv</button></div>
+        <span class="dtitle" id="dockTitle">top.sv</span>
+        <div class="spacer"></div>
+        <button class="mini" id="closeDock" title="Hide panel">Hide</button>
+      </div>
+      <div class="svwrap">
+        <div class="editor" id="editor">
+          <pre class="sv locked" id="genHead"></pre>
+          <textarea class="sv edit" id="hdlEdit" spellcheck="false" placeholder="// your SystemVerilog for this module — appended before endmodule"></textarea>
+          <pre class="sv locked" id="genTail"></pre>
+        </div>
+        <pre class="sv full" id="svOut"></pre>
+      </div>
       <div class="statline" id="statline"></div>
-      <div class="dockfoot"><button class="btn" id="copyBtn" style="flex:1">Copy</button><button class="btn primary" id="dlBtn" style="flex:1">Download .sv</button></div>
+      <div class="dockfoot"><input class="fname" id="fname" value="top.sv" spellcheck="false"><button class="btn" id="copyBtn" style="flex:1">Copy</button><button class="btn primary" id="dlBtn" style="flex:1">Download .sv</button></div>
     </aside>
   </div>
 </div>

@@ -4,6 +4,7 @@ import { $, download, toast } from "./dom.js";
 import { state, VERSION } from "./state.js";
 import { addBlock, addWire, makeTPort, tagPort, addTPort } from "./model.js";
 import { createTop, createModule, addInstance, activateSheet, renderSheet } from "./sheets.js";
+import { refreshSV, setDockMode, currentDockText, autoGrow } from "./codegen.js";
 import { zoomBy, applyView } from "./interactions.js";
 import { applyThemeIcon } from "./theme.js";
 import { mountPalette } from "./palette.js";
@@ -23,8 +24,14 @@ $("#fitBtn").onclick = () => { state.view = { x: 60, y: 60, scale: 1 }; applyVie
 $("#svBtn").onclick = () => $("#dock").classList.toggle("collapsed");
 $("#closeDock").onclick = () => $("#dock").classList.add("collapsed");
 $("#tphead").onclick = () => $("#tpanel").classList.toggle("collapsed");
+$("#dockMode").querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => setDockMode(b.dataset.mode)));
+$("#hdlEdit").addEventListener("input", (e) => {
+  state.modules[state.activeId].body = e.target.value;
+  autoGrow(e.target);
+  refreshSV();
+});
 document.querySelectorAll("[data-addtp]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); addTPort(b.dataset.addtp); }));
-$("#copyBtn").onclick = async () => { try { await navigator.clipboard.writeText($("#svOut").dataset.raw || ""); toast("Copied to clipboard"); } catch { toast("Copy failed — select manually"); } };
+$("#copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(currentDockText()); toast("Copied to clipboard"); } catch { toast("Copy failed — select manually"); } };
 $("#dlBtn").onclick = () => { download($("#svOut").dataset.raw || "", $("#fname").value || "top.sv"); toast("Downloaded " + ($("#fname").value || "top.sv")); };
 $("#saveBtn").onclick = () => { download(serialize(), "sandronelog-design.json", "application/json"); toast("Design saved"); };
 $("#loadBtn").onclick = () => $("#fileIn").click();

@@ -6,13 +6,13 @@ import { $, world, esc, sanitize, toast } from "./dom.js";
 import { select } from "./model.js";
 import { renderBlock, renderPorts, renderTPorts } from "./render.js";
 import { updateWires } from "./wires.js";
-import { refreshSV } from "./codegen.js";
+import { refreshSV, renderDock } from "./codegen.js";
 import { applyView } from "./interactions.js";
 import { renderPaletteItems } from "./palette.js";
 
 /* ---------------- module definitions ---------------- */
 export function createTop() {
-  const mod = { id: "top", name: "top", isTop: true, blocks: [], wires: [], tports: [], view: { x: 60, y: 60, scale: 1 } };
+  const mod = { id: "top", name: "top", isTop: true, blocks: [], wires: [], tports: [], body: "", view: { x: 60, y: 60, scale: 1 } };
   state.modules.top = mod; state.activeId = "top"; state.openTabs = ["top"];
   return mod;
 }
@@ -27,7 +27,7 @@ export function createModule(opts = {}) {
   const tsrc = opts.tports || [{ name: "a", dir: "input", width: 1 }, { name: "y", dir: "output", width: 1 }];
   const mod = {
     id, name: opts.name ? uniqueModuleName(opts.name) : uniqueModuleName("module"),
-    isTop: false, blocks: [], wires: [], view: { x: 60, y: 60, scale: 1 },
+    isTop: false, blocks: [], wires: [], body: "", view: { x: 60, y: 60, scale: 1 },
     tports: tsrc.map((t) => ({ id: uid("t"), name: t.name, dir: t.dir, width: t.width ?? 1 })),
   };
   state.modules[id] = mod; state.order.push(id);
@@ -133,7 +133,7 @@ export function renderSheet(id) {
   state.selected = null;
   state.activeId = id;
   state.modules[id].blocks.forEach((b) => renderBlock(b));
-  renderTPorts(); applyView(); updateWires(); refreshSV();
+  renderTPorts(); applyView(); updateWires(); renderDock();
   renderTabs(); renderPaletteItems();
 }
 export function renderTabs() {
