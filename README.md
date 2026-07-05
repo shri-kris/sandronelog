@@ -1,4 +1,4 @@
-# sandronelog · v0.1
+# sandronelog · v0.2
 
 A browser-based visual editor for digital logic: drag blocks onto a canvas, wire
 their ports, define interface ports, and get live **SystemVerilog**. 

@@ -1,7 +1,7 @@
 // Central mutable state. A design is a set of module definitions; the canvas
 // shows one active module ("sheet") at a time.
 
-export const VERSION = "0.1";
+export const VERSION = "0.2";
 
 export const state = {
   modules: {},        // id -> { id, name, isTop, blocks[], wires[], tports[], view }
