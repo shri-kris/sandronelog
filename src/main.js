@@ -4,7 +4,8 @@ import { $, download, toast } from "./dom.js";
 import { state, VERSION } from "./state.js";
 import { addBlock, addWire, makeTPort, tagPort, addTPort } from "./model.js";
 import { createTop, createModule, addInstance, activateSheet, renderSheet } from "./sheets.js";
-import { refreshSV, setDockMode, currentDockText, autoGrow, generateSV } from "./codegen.js";
+import { refreshSV, setDockMode, currentDockText, autoGrow, generateSV, getTestbench, generateTestbench, renderDock, highlightSV } from "./codegen.js";
+import { attachCodeEditor } from "./editor.js";
 import { zoomBy, applyView } from "./interactions.js";
 import { applyThemeIcon } from "./theme.js";
 import { mountPalette } from "./palette.js";
@@ -33,6 +34,16 @@ $("#hdlEdit").addEventListener("input", (e) => {
   state.modules[state.activeId].body = e.target.value;
   autoGrow(e.target);
   refreshSV();
+});
+$("#tbEdit").addEventListener("input", (e) => { state.testbench = e.target.value; });
+// Tab-to-indent + live SystemVerilog highlight overlay on the editable panes.
+attachCodeEditor($("#hdlEdit"), highlightSV);
+attachCodeEditor($("#tbEdit"), highlightSV);
+$("#regenTb").addEventListener("click", () => {
+  if (state.testbench.trim() && !confirm("Replace the testbench with freshly generated boilerplate?")) return;
+  state.testbench = generateTestbench();
+  renderDock();
+  toast("Testbench regenerated");
 });
 document.querySelectorAll("[data-addtp]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); addTPort(b.dataset.addtp); }));
 $("#copyBtn").onclick = async () => { try { await navigator.clipboard.writeText(currentDockText()); toast("Copied to clipboard"); } catch { toast("Copy failed — select manually"); } };
@@ -97,8 +108,12 @@ $("#runBtn").onclick = async () => {
       throw new Error("No SystemVerilog code generated to compile.");
     }
 
+    // The testbench (instantiating top as the DUT) is the simulation root.
+    if (!state.testbench.trim()) state.testbench = generateTestbench();
+
     const filesPayload = {
-      "design.sv": svCode
+      "design.sv": svCode,
+      "tb.sv": getTestbench()
     };
 
     const response = await compileDesign(filesPayload, true);
@@ -134,7 +149,7 @@ $("#runBtn").onclick = async () => {
       currentVcdData = null;
       waveCanvas.style.display = "none";
       waveEmpty.style.display = "flex";
-      waveEmpty.textContent = "No waveforms were generated. Add a testbench block with $dumpfile(\"waves.vcd\") and $dumpvars to view waves.";
+      waveEmpty.textContent = "No waveforms were generated. Open the Testbench tab and drive the DUT inputs (it already dumps to waves.vcd) to view waves.";
     }
   } catch (error) {
     consoleOut.textContent += `\nError: ${error.message}`;

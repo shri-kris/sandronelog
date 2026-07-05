@@ -61,7 +61,7 @@
     </div>
     <aside class="dock" id="dock">
       <div class="dockhead">
-        <div class="dockmode" id="dockMode"><button data-mode="module" class="on">Module</button><button data-mode="full">Full .sv</button></div>
+        <div class="dockmode" id="dockMode"><button data-mode="module" class="on">Module</button><button data-mode="full">Full .sv</button><button data-mode="tb">Testbench</button></div>
         <span class="dtitle" id="dockTitle">top.sv</span>
         <div class="spacer"></div>
         <button class="mini" id="closeDock" title="Hide panel">Hide</button>
@@ -73,6 +73,10 @@
           <pre class="sv locked" id="genTail"></pre>
         </div>
         <pre class="sv full" id="svOut"></pre>
+        <div class="tbeditor" id="tbEditor" style="display:none">
+          <div class="tbbar"><span class="tbhint">DUT testbench — fully editable, compiled as the sim top</span><button class="mini" id="regenTb" title="Rebuild boilerplate from current top ports">Regenerate</button></div>
+          <textarea class="sv edit tb" id="tbEdit" spellcheck="false" placeholder="// testbench that instantiates top as the DUT"></textarea>
+        </div>
       </div>
       <div class="statline" id="statline"></div>
       <div class="dockfoot"><input class="fname" id="fname" value="top.sv" spellcheck="false"><button class="btn" id="copyBtn">Copy</button><button class="btn primary" id="runBtn" title="Compile and Run simulation on backend">Compile & Run</button><button class="btn" id="dlBtn">Download</button></div>

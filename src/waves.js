@@ -6,6 +6,12 @@
  */
 export function parseVCD(vcdText) {
   if (!vcdText) return null;
+  // $timescale sets the unit of the raw #time ticks below (e.g. 1ps, 10ns).
+  // Default to ns if absent so legacy designs without a `timescale still work.
+  const tsMatch = vcdText.match(/\$timescale\s+([\d.]+)\s*(fs|ps|ns|us|ms|s)\b/i);
+  const timescale = tsMatch
+    ? { num: parseFloat(tsMatch[1]), unit: tsMatch[2].toLowerCase() }
+    : { num: 1, unit: "ns" };
   const lines = vcdText.split("\n");
   const signals = [];
   const aliasMap = {};
@@ -34,7 +40,10 @@ export function parseVCD(vcdText) {
           changes: [] // array of { time, value }
         };
         signals.push(sig);
-        aliasMap[alias] = sig;
+        // Connected nets across the hierarchy share one VCD identifier code, so
+        // one alias can name several $var entries (e.g. tb.A, dut.A, u_ha.a). Map
+        // each alias to ALL of them, or only the last-declared one would update.
+        (aliasMap[alias] ||= []).push(sig);
       } else if (line.startsWith("$enddefinitions")) {
         inHeader = false;
       }
@@ -47,18 +56,14 @@ export function parseVCD(vcdText) {
         const parts = line.split(/\s+/);
         const val = parts[0].substring(1);
         const alias = parts[1];
-        const sig = aliasMap[alias];
-        if (sig) {
-          sig.changes.push({ time: currentTime, value: val });
-        }
+        const sigs = aliasMap[alias];
+        if (sigs) for (const sig of sigs) sig.changes.push({ time: currentTime, value: val });
       } else {
         // 1-bit variable change: 0alias or 1alias
         const val = line[0];
         const alias = line.substring(1);
-        const sig = aliasMap[alias];
-        if (sig) {
-          sig.changes.push({ time: currentTime, value: val });
-        }
+        const sigs = aliasMap[alias];
+        if (sigs) for (const sig of sigs) sig.changes.push({ time: currentTime, value: val });
       }
     }
   }
@@ -76,8 +81,30 @@ export function parseVCD(vcdText) {
 
   return {
     signals,
-    times: sortedTimes
+    times: sortedTimes,
+    timescale
   };
+}
+
+const UNIT_S = { fs: 1e-15, ps: 1e-12, ns: 1e-9, us: 1e-6, ms: 1e-3, s: 1 };
+
+// Round a raw tick interval up to a 1/2/5·10ⁿ "nice" number for grid labels.
+function niceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const m = raw / pow;
+  const nice = m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10;
+  return Math.max(nice * pow, 1);
+}
+
+// Format a raw VCD tick as a human-readable time using the file's timescale.
+function fmtTime(rawT, ts) {
+  const seconds = rawT * ts.num * (UNIT_S[ts.unit] ?? 1e-9);
+  if (seconds === 0) return "0";
+  for (const [u, f] of [["s", 1], ["ms", 1e-3], ["us", 1e-6], ["ns", 1e-9], ["ps", 1e-12], ["fs", 1e-15]]) {
+    if (Math.abs(seconds) >= f) return `${+(seconds / f).toFixed(3)}${u}`;
+  }
+  return `${seconds}s`;
 }
 
 /**
@@ -92,18 +119,30 @@ export function drawWaveforms(canvas, vcdData) {
   const signals = vcdData.signals;
   const times = vcdData.times;
   const maxTime = times[times.length - 1] || 100;
+  const ts = vcdData.timescale || { num: 1, unit: "ns" };
 
   // Layout parameters
   const labelWidth = 150;
   const rowHeight = 45;
-  const timeScale = 4; // pixels per time unit (ns)
   const startX = labelWidth + 20;
   const paddingRight = 40;
-  const canvasWidth = startX + maxTime * timeScale + paddingRight;
   const canvasHeight = signals.length * rowHeight + 50;
 
-  // Resize canvas according to dimensions (or width of parent container if larger)
-  canvas.width = Math.max(canvasWidth, canvas.parentElement.clientWidth || 800);
+  // `timeScale` is px per raw VCD tick, derived to fit the whole run into the
+  // visible width. Deriving it from maxTime (rather than a fixed 4px/unit that
+  // assumed ns) keeps the canvas within the browser's max size for any design
+  // `timescale — a ps-scale run would otherwise produce an ~80k-px canvas that
+  // the browser rejects and renders as a broken-image icon.
+  const viewW = Math.max((canvas.parentElement && canvas.parentElement.clientWidth) || 800, 320);
+  const drawArea = Math.max(viewW - startX - paddingRight - 8, 200);
+  let timeScale = maxTime > 0 ? drawArea / maxTime : 4;
+  let canvasWidth = startX + maxTime * timeScale + paddingRight;
+  const MAX_CANVAS_W = 12000;
+  if (canvasWidth > MAX_CANVAS_W) {
+    canvasWidth = MAX_CANVAS_W;
+    timeScale = (canvasWidth - startX - paddingRight) / Math.max(maxTime, 1);
+  }
+  canvas.width = Math.max(Math.round(canvasWidth), viewW);
   canvas.height = canvasHeight;
 
   // Determine current active theme
@@ -128,7 +167,7 @@ export function drawWaveforms(canvas, vcdData) {
   ctx.textAlign = "center";
 
   // Draw timing markers along X axis
-  const gridStep = Math.max(5, Math.ceil(maxTime / 15));
+  const gridStep = niceStep(maxTime / 10);
   for (let t = 0; t <= maxTime; t += gridStep) {
     const x = startX + t * timeScale;
     ctx.beginPath();
@@ -136,7 +175,7 @@ export function drawWaveforms(canvas, vcdData) {
     ctx.lineTo(x, canvasHeight - 20);
     ctx.stroke();
 
-    ctx.fillText(`${t}ns`, x, 15);
+    ctx.fillText(fmtTime(t, ts), x, 15);
   }
 
   // 2. Wave trace lines

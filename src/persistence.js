@@ -9,6 +9,7 @@ export function serialize() {
   return JSON.stringify({
     version: 4, appVersion: VERSION,
     activeId: state.activeId, openTabs: state.openTabs, order: state.order,
+    testbench: state.testbench || "",
     modules: Object.values(state.modules).map((m) => ({
       id: m.id, name: m.name, isTop: !!m.isTop, body: m.body || "", view: m.view,
       tports: m.tports.map((t) => ({ id: t.id, name: t.name, dir: t.dir, width: t.width })),
@@ -45,6 +46,7 @@ function migrateV3(data) {
 export function loadDesign(raw) {
   const data = (raw.version >= 4) ? raw : migrateV3(raw);
   state.modules = {}; state.order = []; state.openTabs = []; state.activeId = "top"; state.selected = null;
+  state.testbench = data.testbench || "";
 
   const idMap = {};
   const mid = (id) => id === "top" ? "top" : (idMap[id] ||= uid("m"));   // module ids

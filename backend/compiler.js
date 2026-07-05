@@ -97,7 +97,9 @@ async function compileAndSimulate(files, runSimulation = true) {
 
     // 2. Execute command
     const result = await new Promise((resolve) => {
-      exec(compileCmd, { timeout: TIMEOUT_MS, cwd: runDir }, (error, stdout, stderr) => {
+      // cwd = runDir so a simulation's relative $dumpfile("waves.vcd") lands in
+      // the run dir we scan below.
+      exec(compileCmd, { cwd: runDir, timeout: TIMEOUT_MS }, (error, stdout, stderr) => {
         resolve({ error, stdout, stderr });
       });
     });

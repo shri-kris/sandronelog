@@ -9,6 +9,7 @@ export const state = {
   openTabs: [],       // module ids open as tabs (top always first)
   activeId: null,     // module currently shown on the canvas
   selected: null,     // {type:'block'|'wire', id} on the active sheet
+  testbench: "",      // design-global editable testbench source (instantiates top as DUT)
 };
 
 // Transient UI session flags (not persisted).

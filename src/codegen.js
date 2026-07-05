@@ -87,7 +87,7 @@ function moduleSegments(mod, svNameOf) {
     H.push(`);`);
   } else { H.push(`module ${svName};`); }
 
-  if (internalNets.length) { H.push(""); internalNets.forEach((n) => H.push(`    wire ${widthRange(n.width) ? widthRange(n.width) + " " : ""}${n.name};`)); }
+  if (internalNets.length) { H.push(""); internalNets.forEach((n) => H.push(`    logic ${widthRange(n.width) ? widthRange(n.width) + " " : ""}${n.name};`)); }
   H.push("");
 
   // primitive logic: continuous assigns, plus procedural blocks consolidated by
@@ -157,6 +157,56 @@ function computeSvNames() {
   return { svNameOf, top, nonTop };
 }
 
+// Top module's interface as the generated SystemVerilog sees it: the DUT name
+// plus its ports in declaration order, with the exact (sanitized, deduped) net
+// names emitted by moduleSegments so a testbench connects by name cleanly.
+export function topInterface() {
+  const { svNameOf, top } = computeSvNames();
+  const { nets } = buildNets(top);
+  const tindex = {}; top.tports.forEach((t, i) => (tindex[t.id] = i));
+  const ports = nets.filter((n) => n.top)
+    .sort((a, b) => (tindex[a.tportId] ?? 1e9) - (tindex[b.tportId] ?? 1e9))
+    .map((n) => ({ name: n.name, width: n.width, dir: n.dir === "output" ? "output" : "input" }));
+  return { svName: svNameOf[top.id], ports };
+}
+
+// Fully-editable testbench boilerplate: timescale, DUT signals, instantiation of
+// top as `dut`, a $dumpfile/$dumpvars(0, tb) block, and a stimulus stub.
+export function generateTestbench() {
+  const { svName, ports } = topInterface();
+  const inputs = ports.filter((p) => p.dir !== "output");
+  // `logic` works for both procedurally-driven inputs and DUT-driven outputs
+  // under -g2012, so the testbench needs no reg/wire split.
+  const decl = (p) => {
+    const rng = widthRange(p.width); return `    logic ${rng ? rng + " " : ""}${p.name};`;
+  };
+  const L = [];
+  L.push("`timescale 1ns/1ps", "", "module tb;", "");
+  if (ports.length) { ports.forEach((p) => L.push(decl(p))); L.push(""); }
+  // instantiate the design under test
+  if (ports.length) {
+    L.push(`    ${svName} dut (`);
+    ports.forEach((p, i) => L.push(`        .${p.name} (${p.name})${i < ports.length - 1 ? "," : ""}`));
+    L.push(`    );`, "");
+  } else { L.push(`    ${svName} dut ();`, ""); }
+  // dump all signals to the VCD the backend expects
+  L.push(`    initial begin`,
+    `        $dumpfile("waves.vcd");`,
+    `        $dumpvars(1, tb);   // 1 = just the DUT's I/O; use 0 for the full hierarchy`,
+    `    end`, "");
+  // stimulus stub
+  L.push(`    initial begin`);
+  if (inputs.length) L.push(`        ${inputs.map((p) => `${p.name} = 0`).join("; ")};`);
+  L.push(`        #10;`, `        // TODO: drive your inputs here`, `        #10;`, `        $finish;`, `    end`, "", "endmodule", "");
+  return L.join("\n");
+}
+
+// The testbench source to compile/show: the user's saved buffer, or fresh
+// boilerplate when it's still empty. Pure — never mutates state.
+export function getTestbench() {
+  return (state.testbench && state.testbench.trim()) ? state.testbench : generateTestbench();
+}
+
 export function generateSV() {
   const { svNameOf, top, nonTop } = computeSvNames();
   const L = [];
@@ -175,13 +225,41 @@ export function moduleCode(id) {
   return { head, tail, body: mod.body || "" };
 }
 
-function highlight(code) {
-  return esc(code)
-    .replace(/(^|\n)(\/\/.*)/g, (m, a, b) => a + `<span class="cm">${b}</span>`)
-    .replace(/\b(module|endmodule|logic|wire|assign|always_ff|always_comb|always_latch|posedge|negedge|begin|end|if|else)\b/g, '<span class="kw">$1</span>')
-    .replace(/\b(input)\b/g, '<span class="dir">$1</span>')
-    .replace(/\b(output)\b/g, '<span class="out">$1</span>')
-    .replace(/(\[\d+:\d+\])/g, '<span class="rng">$1</span>');
+// Single-pass SystemVerilog tokenizer -> highlighted HTML. Sticky (`y`) regexes
+// match one token at the current offset, so (unlike chained .replace) spans can
+// never nest or corrupt each other — safe to run over live, half-typed editor
+// text. Used for both the locked panes and the editable highlight overlay.
+const HL_RULES = [
+  ["cm",  /\/\/[^\n]*|\/\*[\s\S]*?\*\//y],                       // comments
+  ["str", /"(?:\\.|[^"\\\n])*"/y],                                // string literal
+  ["pre", /`\w+/y],                                               // compiler directive
+  ["sys", /\$\w+/y],                                              // system task/function
+  ["rng", /\[\s*\d+\s*:\s*\d+\s*\]/y],                            // bit range
+  ["num", /\d*'[sS]?[bBoOdDhH][0-9a-fA-FxXzZ?_]+|\b\d[\d_]*\b/y], // sized/plain number
+  ["out", /\boutput\b/y],
+  ["dir", /\b(?:input|inout)\b/y],
+  ["kw",  /\b(?:module|endmodule|begin|end|initial|final|always|always_ff|always_comb|always_latch|assign|posedge|negedge|if|else|for|while|do|repeat|forever|case|casez|casex|endcase|default|logic|reg|wire|bit|int|integer|real|time|genvar|parameter|localparam|generate|endgenerate|function|endfunction|task|endtask|typedef|enum|struct|union|packed|signed|unsigned|return|break|continue|package|endpackage|import)\b/y],
+];
+
+export function highlightSV(code) {
+  let i = 0, out = "";
+  const n = code.length;
+  while (i < n) {
+    let matched = false;
+    for (const [cls, re] of HL_RULES) {
+      re.lastIndex = i;
+      const m = re.exec(code);
+      if (m) { out += `<span class="${cls}">${esc(m[0])}</span>`; i = re.lastIndex; matched = true; break; }
+    }
+    if (matched) continue;
+    // identifiers & anything else pass through escaped; consume whole words so
+    // a keyword-like prefix (e.g. "moduleName") isn't re-scanned mid-token.
+    if (/[A-Za-z_]/.test(code[i])) {
+      let j = i + 1; while (j < n && /\w/.test(code[j])) j++;
+      out += esc(code.slice(i, j)); i = j;
+    } else { out += esc(code[i]); i++; }
+  }
+  return out;
 }
 
 /* ---------------- dock (per-module editor vs full design) ---------------- */
@@ -195,15 +273,16 @@ export function refreshSV() {
   const full = generateSV();
   $("#svOut").dataset.raw = full;
   const mod = state.modules[state.activeId];
-  $("#dockTitle").textContent = `${mod.name}.sv`;
+  $("#dockTitle").textContent = dockMode === "tb" ? "tb.sv" : `${mod.name}.sv`;
   document.querySelectorAll("#dockMode [data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === dockMode));
   if (dockMode === "full") {
-    $("#svOut").innerHTML = highlight(full);
-  } else {
+    $("#svOut").innerHTML = highlightSV(full);
+  } else if (dockMode === "module") {
     const { head, tail } = moduleCode(state.activeId);
-    $("#genHead").innerHTML = highlight(head) + `\n<span class="cm">    // ── your HDL (editable) ──</span>`;
-    $("#genTail").innerHTML = highlight(tail);
+    $("#genHead").innerHTML = highlightSV(head) + `\n<span class="cm">    // ── your HDL (editable) ──</span>`;
+    $("#genTail").innerHTML = highlightSV(tail);
   }
+  // tb mode: the #tbEdit textarea is user-owned; never overwrite it here.
   const insts = mod.blocks.filter((b) => b.kind === "instance").length;
   $("#statline").innerHTML =
     `<span><b>${Object.keys(state.modules).length}</b> modules</span>` +
@@ -214,15 +293,20 @@ export function refreshSV() {
 
 // Called on tab switch / mode toggle: choose editor vs full pre, load the textarea.
 export function renderDock() {
-  const moduleMode = dockMode === "module";
-  $("#editor").style.display = moduleMode ? "" : "none";
-  $("#svOut").style.display = moduleMode ? "none" : "";
-  if (moduleMode) { const ta = $("#hdlEdit"); ta.value = state.modules[state.activeId].body || ""; autoGrow(ta); }
+  $("#editor").style.display = dockMode === "module" ? "" : "none";
+  $("#svOut").style.display = dockMode === "full" ? "" : "none";
+  $("#tbEditor").style.display = dockMode === "tb" ? "" : "none";
+  if (dockMode === "module") { const ta = $("#hdlEdit"); ta.value = state.modules[state.activeId].body || ""; autoGrow(ta); ta.__sync && ta.__sync(); }
+  if (dockMode === "tb") {
+    if (!state.testbench || !state.testbench.trim()) state.testbench = generateTestbench();
+    const ta = $("#tbEdit"); ta.value = state.testbench; ta.__sync && ta.__sync();
+  }
   refreshSV();
 }
 
 // Text the Copy button yields: the shown module (module mode) or the whole design.
 export function currentDockText() {
+  if (dockMode === "tb") return getTestbench();
   if (dockMode === "full") return $("#svOut").dataset.raw || "";
   const { head, tail, body } = moduleCode(state.activeId);
   const b = body.trim()
