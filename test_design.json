@@ -1,0 +1,23 @@
+{
+  "version": 4,
+  "activeId": "top",
+  "openTabs": [
+    "top"
+  ],
+  "modules": [
+    {
+      "id": "top",
+      "name": "top",
+      "isTop": true,
+      "body": "    // 1. Declare local signals for our counter\n    logic clk;\n    logic rst_n;\n    logic [3:0] count;\n\n    // 2. Counter Logic (triggered on rising edge of clock or falling edge of reset)\n    always_ff @(posedge clk or negedge rst_n) begin\n        if (!rst_n) begin\n            count <= 4'b0000;   // Reset the count to 0\n        end else begin\n            count <= count + 1;  // Increment the counter\n        end\n    end\n\n    // 3. Clock Generator: toggles clk every 5 time units (10 time units period)\n    initial begin\n        clk = 0;\n        forever #5 clk = ~clk;\n    end\n\n    // 4. Stimulus and Waveform Generation\n    initial begin\n        // Setup waveform dumping to \"waves.vcd\" for the visualizer\n        $dumpfile(\"waves.vcd\");\n        $dumpvars(0, top);\n\n        // Initial inputs\n        $display(\"Starting simulation...\");\n        rst_n = 0;          // Assert active-low reset (forces count to 0)\n        #12;                // Wait 12 time units (mid-clock cycle)\n        \n        rst_n = 1;          // Deassert reset (counter starts counting)\n        #80;                // Let it run for 80 time units\n        \n        rst_n = 0;          // Assert reset again briefly\n        #10;\n        \n        rst_n = 1;          // Release reset again\n        #40;\n\n        $display(\"Simulation complete! Final count: %d\", count);\n        $finish;            // Finish the simulation run\n    end",
+      "view": {
+        "x": 60,
+        "y": 60,
+        "scale": 1
+      },
+      "tports": [],
+      "blocks": [],
+      "wires": []
+    }
+  ]
+}

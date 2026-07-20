@@ -1,6 +1,10 @@
 // API helper to communicate with the compiler backend.
 
-const DEFAULT_API_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
+// Default to window.location.origin for production reverse-proxy (HTTPS), fallback to port 5000 in standalone local dev
+const isLocalDevPort = window.location.port !== "" && window.location.port !== "80" && window.location.port !== "443";
+const DEFAULT_API_URL = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && isLocalDevPort
+  ? `${window.location.protocol}//${window.location.hostname}:5000`
+  : window.location.origin;
 
 export async function compileDesign(files, runSimulation = true) {
   // Allow overriding backend URL via localStorage for convenience
